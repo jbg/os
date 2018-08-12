@@ -56,7 +56,7 @@ impl Mapper {
   pub fn translate(&self, virtual_address: VirtualAddress) -> Option<PhysicalAddress> {
     let offset = virtual_address % PAGE_SIZE;
     self.translate_page(VirtualPage::containing_address(virtual_address))
-        .map(|physical_page| physical_page.number * PAGE_SIZE + offset)
+        .map(|physical_page| physical_page.number as u64 * PAGE_SIZE + offset)
   }
 
   pub fn map_to<A>(&mut self, virtual_page: VirtualPage, physical_page: PhysicalPage, flags: EntryFlags, allocator: &mut A) where A: Allocator {
@@ -86,7 +86,7 @@ impl Mapper {
                  .expect("huge pages are not supported");
     let physical_page = p1[page.p1_index()].pointed_physical_page().unwrap();
     p1[page.p1_index()].set_unused();
-    tlb::flush(x86_64::VirtualAddress(page.start_address()));
+    tlb::flush(x86_64::VirtAddr::new(page.start_address()));
     // TODO free up p1/2/3 tables if not used any more
     allocator.deallocate(physical_page);
   }

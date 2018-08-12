@@ -19,15 +19,15 @@ pub struct PhysicalPage {
   number: usize
 }
 
-pub const PAGE_SIZE: usize = 4096;
+pub const PAGE_SIZE: u64 = 4096;
 
 impl PhysicalPage {
-  fn containing_address(address: usize) -> PhysicalPage {
-    PhysicalPage { number: address / PAGE_SIZE }
+  fn containing_address(address: u64) -> PhysicalPage {
+    PhysicalPage { number: (address / PAGE_SIZE) as usize }
   }
 
   fn start_address(&self) -> PhysicalAddress {
-    self.number * PAGE_SIZE
+    self.number as u64 * PAGE_SIZE
   }
 
   fn clone(&self) -> PhysicalPage {
@@ -76,30 +76,30 @@ pub fn init(boot_info: &BootInformation) -> MemoryController {
 
   println!("Memory areas:");
   for area in memory_map_tag.memory_areas() {
-    println!("    start: {:#x}, length: {:#x}", area.base_addr, area.length);
+    println!("    start: {:#x}, length: {:#x}", area.start_address(), area.size());
   }
 
   println!("Kernel sections:");
   for section in elf_sections_tag.sections() {
-    println!("    addr: {:#x}, size: {:#x}, flags: {:#x}", section.addr, section.size, section.flags);
+    println!("    addr: {:#x}, size: {:#x}, flags: {:#x}", section.start_address(), section.size(), section.flags());
   }
 
   let kernel_start = elf_sections_tag.sections()
                                      .filter(|s| s.is_allocated())
-                                     .map(|s| s.addr)
+                                     .map(|s| s.start_address())
                                      .min()
                                      .unwrap();
   let kernel_end = elf_sections_tag.sections()
                                    .filter(|s| s.is_allocated())
-                                   .map(|s| s.addr + s.size)
+                                   .map(|s| s.end_address())
                                    .max()
                                    .unwrap();
-  let multiboot_start = boot_info.start_address();
-  let multiboot_end = boot_info.end_address();
+  let multiboot_start = boot_info.start_address() as u64;
+  let multiboot_end = boot_info.end_address() as u64;
   println!("kernel: {:#x}-{:#x}, multiboot: {:#x}-{:#x}", kernel_start, kernel_end, multiboot_start, multiboot_end);
 
   print!("Setting up memory allocator... ");
-  let mut allocator = AreaAllocator::new(kernel_start as usize, kernel_end as usize, multiboot_start, multiboot_end, memory_map_tag.memory_areas());
+  let mut allocator = AreaAllocator::new(kernel_start as u64, kernel_end as u64, multiboot_start, multiboot_end, memory_map_tag.memory_areas());
   println!("done.");
 
   println!("Remapping kernel sections...");

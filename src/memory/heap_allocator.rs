@@ -1,4 +1,5 @@
-use alloc::heap::{Alloc, AllocErr, Layout};
+use alloc::alloc::{Alloc, AllocErr, Layout};
+use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Debug)]
@@ -15,7 +16,7 @@ impl BumpAllocator {
 }
 
 unsafe impl<'a> Alloc for &'a BumpAllocator {
-  unsafe fn alloc(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> {
+  unsafe fn alloc(&mut self, layout: Layout) -> Result<NonNull<u8>, AllocErr> {
     loop {
       let current_next = self.next.load(Ordering::Relaxed);
       let start = align_up(current_next, layout.align());
@@ -23,16 +24,16 @@ unsafe impl<'a> Alloc for &'a BumpAllocator {
       if end <= self.heap_end {
         let next_now = self.next.compare_and_swap(current_next, end, Ordering::Relaxed);
         if next_now == current_next {
-          return Ok(start as *mut u8);
+          return Ok(NonNull::new(start as *mut u8).unwrap());
         }
       }
       else {
-        return Err(AllocErr::Exhausted { request: layout });
+        return Err(AllocErr);
       }
     }
   }
 
-  unsafe fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
+  unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
     println!("warning: deallocation of memory is unimplemented");
   }
 }

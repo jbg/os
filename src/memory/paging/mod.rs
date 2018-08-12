@@ -8,7 +8,8 @@ use core::ops::{Deref, DerefMut, Add};
 use multiboot2::BootInformation;
 use x86_64;
 use x86_64::instructions::tlb;
-use x86_64::registers::control_regs;
+use x86_64::registers::control::Cr3;
+use x86_64::structures::paging::PhysFrame;
 
 use memory::{PAGE_SIZE, Allocator, PhysicalPage};
 pub use self::entry::EntryFlags;
@@ -17,8 +18,8 @@ use self::temporary::TemporaryPage;
 
 const ENTRY_COUNT: usize = 512;
 
-pub type PhysicalAddress = usize;
-pub type VirtualAddress = usize;
+pub type PhysicalAddress = u64;
+pub type VirtualAddress = u64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VirtualPage {
@@ -28,11 +29,11 @@ pub struct VirtualPage {
 impl VirtualPage {
   pub fn containing_address(address: VirtualAddress) -> VirtualPage {
     assert!(address < 0x0000_8000_0000_0000 || address >= 0xffff_8000_0000_0000, "invalid address: 0x{:x}", address);
-    VirtualPage { number: address / PAGE_SIZE }
+    VirtualPage { number: (address / PAGE_SIZE) as usize }
   }
 
-  pub fn start_address(&self) -> usize {
-    self.number * PAGE_SIZE
+  pub fn start_address(&self) -> u64 {
+    self.number as u64 * PAGE_SIZE
   }
 
   fn p4_index(&self) -> usize {
@@ -111,7 +112,7 @@ impl ActivePageTable {
   pub fn with<F>(&mut self, table: &mut InactivePageTable, temporary_page: &mut TemporaryPage, f: F) where F: FnOnce(&mut Mapper) {
     {
       // unsafe because reading CR3 throws a CPU exception if not in kernel mode. but we're a kernel!
-      let backup = PhysicalPage::containing_address(control_regs::cr3().0 as usize);
+      let backup = PhysicalPage::containing_address(Cr3::read().0.start_address().as_u64());
       let p4_table = temporary_page.map_table_physical_page(backup.clone(), self);
       self.p4_mut()[511].set(table.p4.clone(), EntryFlags::PRESENT | EntryFlags::WRITABLE);
       tlb::flush_all();
@@ -123,11 +124,12 @@ impl ActivePageTable {
   }
 
   pub fn switch(&mut self, new_table: InactivePageTable) -> InactivePageTable {
+    let (cr3_start, cr3_flags) = Cr3::read();
     let old_table = InactivePageTable {
-      p4: PhysicalPage::containing_address(control_regs::cr3().0 as usize)
+      p4: PhysicalPage::containing_address(cr3_start.start_address().as_u64())
     };
     unsafe {
-      control_regs::cr3_write(x86_64::PhysicalAddress(new_table.p4.start_address() as u64));
+      Cr3::write(PhysFrame::from_start_address(x86_64::PhysAddr::new(new_table.p4.start_address() as u64)).unwrap(), cr3_flags);
     }
     old_table
   }
@@ -164,8 +166,8 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
         continue;
       }
       assert!(section.start_address() % PAGE_SIZE == 0, "elf section not page aligned");
-      println!("remapping kernel section at addr: {:#x}, size: {:#x}", section.addr, section.size);
-      let flags = EntryFlags::from_elf_section_flags(section);
+      println!("remapping kernel section at addr: {:#x}, size: {:#x}", section.start_address(), section.size());
+      let flags = EntryFlags::from_elf_section_flags(&section);
       let start = PhysicalPage::containing_address(section.start_address());
       let end = PhysicalPage::containing_address(section.end_address() - 1);
       for page in PhysicalPage::range_inclusive(start, end) {
@@ -179,8 +181,8 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
     mapper.identity_map(vga_buffer_page, EntryFlags::WRITABLE, allocator);
 
     // Identity map the multiboot info structure
-    let multiboot_start = PhysicalPage::containing_address(boot_info.start_address());
-    let multiboot_end = PhysicalPage::containing_address(boot_info.end_address() - 1);
+    let multiboot_start = PhysicalPage::containing_address(boot_info.start_address() as u64);
+    let multiboot_end = PhysicalPage::containing_address(boot_info.end_address() as u64 - 1);
     println!("remapping multiboot info ({:?} - {:?})", multiboot_start, multiboot_end);
     for page in PhysicalPage::range_inclusive(multiboot_start, multiboot_end) {
       mapper.identity_map(page, EntryFlags::PRESENT, allocator);

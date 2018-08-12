@@ -5,7 +5,7 @@ use x86_64;
 use x86_64::instructions::segmentation::set_cs;
 use x86_64::instructions::tables::load_tss;
 use x86_64::structures::gdt::SegmentSelector;
-use x86_64::structures::idt::{Idt, ExceptionStackFrame};
+use x86_64::structures::idt::{InterruptDescriptorTable, ExceptionStackFrame};
 use x86_64::structures::tss::TaskStateSegment;
 
 use memory::MemoryController;
@@ -16,8 +16,8 @@ static GDT: Once<Gdt> = Once::new();
 const DOUBLE_FAULT_IST_INDEX: usize = 0;
 
 lazy_static! {
-  static ref IDT: Idt = {
-    let mut idt = Idt::new();
+  static ref IDT: InterruptDescriptorTable = {
+    let mut idt = InterruptDescriptorTable::new();
     idt.breakpoint.set_handler_fn(breakpoint_handler);
     unsafe {
       idt.double_fault.set_handler_fn(double_fault_handler)
@@ -33,7 +33,7 @@ pub fn init(mem_controller: &mut MemoryController) {
                                          .expect("failed to allocate double fault stack");
   let tss = TSS.call_once(|| {
     let mut tss = TaskStateSegment::new();
-    tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX] = x86_64::VirtualAddress(double_fault_stack.top());
+    tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX] = x86_64::VirtAddr::new(double_fault_stack.top());
     tss
   });
 

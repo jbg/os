@@ -1,4 +1,4 @@
-use multiboot2::{ElfSection, ELF_SECTION_ALLOCATED, ELF_SECTION_WRITABLE, ELF_SECTION_EXECUTABLE};
+use multiboot2::{ElfSection, ElfSectionFlags};
 
 use memory::PhysicalPage;
 
@@ -20,13 +20,13 @@ bitflags! {
 impl EntryFlags {
   pub fn from_elf_section_flags(section: &ElfSection) -> EntryFlags {
     let mut flags = EntryFlags::empty();
-    if section.flags().contains(ELF_SECTION_ALLOCATED) {
+    if section.flags().contains(ElfSectionFlags::ALLOCATED) {
       flags = flags | EntryFlags::PRESENT;
     }
-    if section.flags().contains(ELF_SECTION_WRITABLE) {
+    if section.flags().contains(ElfSectionFlags::WRITABLE) {
       flags = flags | EntryFlags::WRITABLE;
     }
-    if !section.flags().contains(ELF_SECTION_EXECUTABLE) {
+    if !section.flags().contains(ElfSectionFlags::EXECUTABLE) {
       flags = flags | EntryFlags::NO_EXECUTE;
     }
     flags
@@ -50,7 +50,7 @@ impl Entry {
 
   pub fn pointed_physical_page(&self) -> Option<PhysicalPage> {
     if self.flags().contains(EntryFlags::PRESENT) {
-      Some(PhysicalPage::containing_address(self.0 as usize & 0x000fffff_fffff000))
+      Some(PhysicalPage::containing_address(self.0 & 0x000fffff_fffff000))
     }
     else {
       None

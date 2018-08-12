@@ -16,8 +16,8 @@ impl Allocator for AreaAllocator {
     if let Some(area) = self.current_area {
       let page = PhysicalPage { number: self.next_free.number };
       let current_area_last_page = {
-        let address = area.base_addr + area.length - 1;
-        PhysicalPage::containing_address(address as usize)
+        let address = area.start_address() + area.size() - 1;
+        PhysicalPage::containing_address(address)
       };
       if page > current_area_last_page {
         self.choose_next_area();
@@ -45,7 +45,7 @@ impl Allocator for AreaAllocator {
 }
 
 impl AreaAllocator {
-  pub fn new(kernel_start: usize, kernel_end: usize, multiboot_start: usize, multiboot_end: usize, memory_areas: MemoryAreaIter) -> AreaAllocator {
+  pub fn new(kernel_start: u64, kernel_end: u64, multiboot_start: u64, multiboot_end: u64, memory_areas: MemoryAreaIter) -> AreaAllocator {
     let mut allocator = AreaAllocator {
       next_free: PhysicalPage::containing_address(0),
       current_area: None,
@@ -61,11 +61,11 @@ impl AreaAllocator {
 
   fn choose_next_area(&mut self) {
     self.current_area = self.areas.clone().filter(|area| {
-      let address = area.base_addr + area.length - 1;
-      PhysicalPage::containing_address(address as usize) >= self.next_free
-    }).min_by_key(|area| area.base_addr);
+      let address = area.start_address() + area.size() - 1;
+      PhysicalPage::containing_address(address) >= self.next_free
+    }).min_by_key(|area| area.start_address());
     if let Some(area) = self.current_area {
-      let first_page = PhysicalPage::containing_address(area.base_addr as usize);
+      let first_page = PhysicalPage::containing_address(area.start_address());
       if self.next_free < first_page {
         self.next_free = first_page;
       }
